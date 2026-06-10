@@ -11,7 +11,9 @@ const DEFAULT_MODEL = "gpt-4o-transcribe";
 const DIARIZATION_MODEL = "gpt-4o-transcribe-diarize";
 const DEFAULT_CHUNK_SECONDS = 600;
 const DEFAULT_AUDIO_BITRATE = "32k";
+const DEFAULT_DIARIZE_AUDIO_BITRATE = "64k";
 const DEFAULT_SAMPLE_RATE = "16000";
+const DEFAULT_AUDIO_FILTERS = "highpass=f=80,lowpass=f=8000,afftdn=nf=-25,loudnorm=I=-16:TP=-1.5:LRA=11";
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
 function printHelp() {
@@ -27,6 +29,8 @@ Options:
   --diarize         Label who spoke in each segment with ${DIARIZATION_MODEL}.
   --speaker         Optional known speaker reference as Name=audio.wav. Repeat up to 4 times.
   --chunk-seconds   Chunk length in seconds. Default: ${DEFAULT_CHUNK_SECONDS}
+  --audio-bitrate   MP3 bitrate for chunks. Default: ${DEFAULT_AUDIO_BITRATE}, or ${DEFAULT_DIARIZE_AUDIO_BITRATE} with --diarize.
+  --no-audio-cleanup Disable local voice cleanup filters before transcription.
   --language        Optional ISO language hint, for example es or en.
   --keep-chunks     Keep generated audio chunks for inspection.
   --help, -h        Show this help.
@@ -39,6 +43,7 @@ function parseArgs(argv) {
     model: DEFAULT_MODEL,
     chunkSeconds: DEFAULT_CHUNK_SECONDS,
     keepChunks: false,
+    audioCleanup: true,
     speakers: [],
   };
 
@@ -64,6 +69,11 @@ function parseArgs(argv) {
     } else if (arg === "--chunk-seconds") {
       args.chunkSeconds = Number.parseInt(next, 10);
       i += 1;
+    } else if (arg === "--audio-bitrate") {
+      args.audioBitrate = next;
+      i += 1;
+    } else if (arg === "--no-audio-cleanup") {
+      args.audioCleanup = false;
     } else if (arg === "--language") {
       args.language = next;
       i += 1;
@@ -77,6 +87,9 @@ function parseArgs(argv) {
 
   if (args.model === DIARIZATION_MODEL) args.diarize = true;
   if (args.diarize) args.model = DIARIZATION_MODEL;
+  if (!args.audioBitrate) {
+    args.audioBitrate = args.diarize ? DEFAULT_DIARIZE_AUDIO_BITRATE : DEFAULT_AUDIO_BITRATE;
+  }
 
   return args;
 }
@@ -94,6 +107,9 @@ function assertConfig(args) {
   }
   if (!Number.isFinite(args.chunkSeconds) || args.chunkSeconds < 30) {
     throw new Error("--chunk-seconds must be a number >= 30.");
+  }
+  if (!/^\d+k$/i.test(args.audioBitrate)) {
+    throw new Error('--audio-bitrate must use a value like "32k", "64k", or "96k".');
   }
   if (args.speakers.length > 0 && !args.diarize) {
     throw new Error("--speaker only works together with --diarize.");
@@ -182,12 +198,10 @@ function displaySpeaker(speaker) {
   return speaker;
 }
 
-async function makeChunks({ input, workDir, chunkSeconds }) {
+async function makeChunks({ input, workDir, chunkSeconds, audioBitrate, audioCleanup }) {
   fs.mkdirSync(workDir, { recursive: true });
   const chunkPattern = path.join(workDir, "chunk_%03d.mp3");
-
-  console.log(`Extracting audio into ${chunkSeconds}s chunks...`);
-  await run(ffmpeg.path, [
+  const ffmpegArgs = [
     "-y",
     "-i",
     input,
@@ -196,8 +210,17 @@ async function makeChunks({ input, workDir, chunkSeconds }) {
     "1",
     "-ar",
     DEFAULT_SAMPLE_RATE,
+  ];
+
+  if (audioCleanup) {
+    ffmpegArgs.push("-af", DEFAULT_AUDIO_FILTERS);
+  }
+
+  console.log(`Extracting audio into ${chunkSeconds}s chunks...`);
+  await run(ffmpeg.path, [
+    ...ffmpegArgs,
     "-b:a",
-    DEFAULT_AUDIO_BITRATE,
+    audioBitrate,
     "-f",
     "segment",
     "-segment_time",
@@ -296,11 +319,15 @@ async function main() {
 
   console.log(`Model: ${args.model}`);
   console.log(`Speaker labels: ${args.diarize ? "on" : "off"}`);
+  console.log(`Audio bitrate: ${args.audioBitrate}`);
+  console.log(`Audio cleanup: ${args.audioCleanup ? "on" : "off"}`);
 
   const chunks = await makeChunks({
     input: inputPath,
     workDir,
     chunkSeconds: args.chunkSeconds,
+    audioBitrate: args.audioBitrate,
+    audioCleanup: args.audioCleanup,
   });
 
   const client = new OpenAI();
@@ -359,6 +386,8 @@ async function main() {
         diarize: Boolean(args.diarize),
         knownSpeakers: args.speakers.map((speaker) => speaker.name),
         chunkSeconds: args.chunkSeconds,
+        audioBitrate: args.audioBitrate,
+        audioCleanup: args.audioCleanup,
         createdAt: new Date().toISOString(),
         segments,
       },

@@ -24,6 +24,27 @@ npm run transcribe -- --input "C:\path\to\meeting.mp4" --language es
 
 Por defecto usa `gpt-4o-transcribe`, extrae el audio del video, lo convierte a MP3 mono liviano y lo separa en bloques de 10 minutos para evitar el limite de subida por archivo.
 
+## Transcribir con personas
+
+Para separar la reunion por hablante:
+
+```bash
+npm run transcribe -- --input "C:\path\to\meeting.mp4" --language es --diarize
+```
+
+Esto usa `gpt-4o-transcribe-diarize` y genera un TXT con lineas parecidas a:
+
+```text
+[00:00:01 - 00:00:04] Persona A: Hola, como estan?
+[00:00:05 - 00:00:10] Persona B: Bien, revisemos los pendientes.
+```
+
+Si tienes muestras cortas de voz, puedes dar nombres reales. Cada muestra debe ser un audio corto de referencia del hablante:
+
+```bash
+npm run transcribe -- --input "meeting.mp4" --language es --diarize --speaker "Nico=nico.wav" --speaker "Richi=richi.wav"
+```
+
 Los resultados quedan en:
 
 ```text

@@ -29,7 +29,7 @@ Por defecto usa `gpt-4o-transcribe`, extrae el audio del video, lo convierte a M
 Para separar la reunion por hablante:
 
 ```bash
-npm run transcribe -- --input "C:\path\to\meeting.mp4" --language es --diarize
+npm run transcribe:diarize -- --input "C:\path\to\meeting.mp4" --language es
 ```
 
 Esto usa `gpt-4o-transcribe-diarize` y genera un TXT con lineas parecidas a:
@@ -42,7 +42,7 @@ Esto usa `gpt-4o-transcribe-diarize` y genera un TXT con lineas parecidas a:
 Si tienes muestras cortas de voz, puedes dar nombres reales. Cada muestra debe ser un audio corto de referencia del hablante:
 
 ```bash
-npm run transcribe -- --input "meeting.mp4" --language es --diarize --speaker "Nico=nico.wav" --speaker "Richi=richi.wav"
+npm run transcribe:diarize -- --input "meeting.mp4" --language es --speaker "Nico=nico.wav" --speaker "Richi=richi.wav"
 ```
 
 Los resultados quedan en:

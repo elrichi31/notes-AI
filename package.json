@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "transcribe": "node src/transcribe.js"
+    "transcribe": "node src/transcribe.js",
+    "transcribe:diarize": "node src/transcribe.js --diarize"
   },
   "dependencies": {
     "@ffmpeg-installer/ffmpeg": "^1.1.0",

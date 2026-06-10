@@ -18,6 +18,7 @@ function printHelp() {
   console.log(`
 Usage:
   npm run transcribe -- --input "meeting.mp4"
+  npm run transcribe:diarize -- --input "meeting.mp4"
 
 Options:
   --input, -i       Video or audio file to transcribe. Required.
@@ -174,6 +175,10 @@ function formatTime(seconds) {
 function displaySpeaker(speaker) {
   if (!speaker) return "Persona";
   if (/^[A-Z]$/.test(speaker)) return `Persona ${speaker}`;
+  if (/^speaker[_ -]?\d+$/i.test(speaker)) {
+    const number = speaker.match(/\d+/)?.[0];
+    return `Persona ${number}`;
+  }
   return speaker;
 }
 
@@ -267,6 +272,13 @@ function formatDiarizedTranscript(diarizedSegments) {
     .join("\n");
 }
 
+function transcriptFromRawDiarizedText(segments) {
+  return segments
+    .map((segment) => segment.text.trim())
+    .filter(Boolean)
+    .join("\n\n");
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
@@ -281,6 +293,9 @@ async function main() {
   const workDir = path.resolve(".transcribe-work", `${baseName}-${Date.now()}`);
 
   fs.mkdirSync(outDir, { recursive: true });
+
+  console.log(`Model: ${args.model}`);
+  console.log(`Speaker labels: ${args.diarize ? "on" : "off"}`);
 
   const chunks = await makeChunks({
     input: inputPath,
@@ -303,8 +318,16 @@ async function main() {
       speakers: args.speakers,
     });
 
+    const resultSegments = result.segments ?? [];
+    if (args.diarize && resultSegments.length === 0) {
+      console.warn(
+        `Warning: ${path.basename(chunk)} did not return diarized segments. ` +
+          "The raw response was saved in the JSON file."
+      );
+    }
+
     const diarizedSegments = args.diarize
-      ? flattenDiarizedSegments(result.segments ?? [], index, args.chunkSeconds)
+      ? flattenDiarizedSegments(resultSegments, index, args.chunkSeconds)
       : [];
 
     segments.push({
@@ -316,12 +339,12 @@ async function main() {
     });
   }
 
+  const allDiarizedSegments = segments.flatMap((segment) => segment.diarizedSegments);
   const transcriptText = args.diarize
-    ? formatDiarizedTranscript(segments.flatMap((segment) => segment.diarizedSegments))
-    : segments
-        .map((segment) => segment.text.trim())
-        .filter(Boolean)
-        .join("\n\n");
+    ? allDiarizedSegments.length > 0
+      ? formatDiarizedTranscript(allDiarizedSegments)
+      : transcriptFromRawDiarizedText(segments)
+    : transcriptFromRawDiarizedText(segments);
 
   const txtPath = path.join(outDir, `${baseName}.txt`);
   const jsonPath = path.join(outDir, `${baseName}.json`);

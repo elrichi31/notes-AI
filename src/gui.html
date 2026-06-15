@@ -1,0 +1,391 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Notes AI Transcripciones</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f7f1e8;
+        --card: rgba(255, 252, 247, 0.92);
+        --line: #d9c9b4;
+        --ink: #2c241d;
+        --muted: #6c5c4c;
+        --accent: #a34b2a;
+        --accent-strong: #7f3518;
+        --success: #2f6b45;
+        --error: #9a2d2d;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        color: var(--ink);
+        background:
+          radial-gradient(circle at top left, rgba(255, 255, 255, 0.75), transparent 35%),
+          linear-gradient(135deg, #efe3d0 0%, #f7f1e8 45%, #e8d5bc 100%);
+      }
+
+      .shell {
+        width: min(920px, calc(100% - 32px));
+        margin: 40px auto;
+        padding: 28px;
+        border: 1px solid rgba(140, 106, 76, 0.22);
+        border-radius: 28px;
+        background: var(--card);
+        box-shadow: 0 24px 80px rgba(64, 38, 18, 0.12);
+        backdrop-filter: blur(10px);
+      }
+
+      h1 {
+        margin: 0 0 8px;
+        font-size: clamp(2rem, 4vw, 3.2rem);
+        line-height: 0.95;
+        letter-spacing: -0.04em;
+      }
+
+      p {
+        margin: 0;
+        color: var(--muted);
+      }
+
+      .hero {
+        display: grid;
+        gap: 18px;
+        margin-bottom: 28px;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 16px;
+        margin-top: 24px;
+      }
+
+      label {
+        display: grid;
+        gap: 8px;
+        font-weight: 600;
+        color: var(--ink);
+      }
+
+      input,
+      select,
+      button {
+        font: inherit;
+      }
+
+      input[type="file"],
+      input[type="number"],
+      input[type="text"] {
+        width: 100%;
+        padding: 12px 14px;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: white;
+      }
+
+      .check {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 14px 16px;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.7);
+      }
+
+      .actions {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-top: 24px;
+      }
+
+      button {
+        border: 0;
+        border-radius: 999px;
+        padding: 14px 22px;
+        cursor: pointer;
+        transition: transform 0.18s ease, background 0.18s ease;
+      }
+
+      button.primary {
+        background: var(--accent);
+        color: white;
+        font-weight: 700;
+      }
+
+      button.primary:hover {
+        background: var(--accent-strong);
+        transform: translateY(-1px);
+      }
+
+      button:disabled {
+        opacity: 0.6;
+        cursor: wait;
+        transform: none;
+      }
+
+      .panel {
+        margin-top: 26px;
+        padding: 18px;
+        border-radius: 20px;
+        background: rgba(255, 255, 255, 0.72);
+        border: 1px solid rgba(140, 106, 76, 0.18);
+      }
+
+      .status {
+        font-weight: 700;
+      }
+
+      .status.success {
+        color: var(--success);
+      }
+
+      .status.error {
+        color: var(--error);
+      }
+
+      pre {
+        margin: 14px 0 0;
+        padding: 16px;
+        min-height: 220px;
+        max-height: 420px;
+        overflow: auto;
+        border-radius: 18px;
+        background: #241b14;
+        color: #f8e9d6;
+        line-height: 1.5;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      .result {
+        margin-top: 16px;
+        padding: 14px;
+        border-radius: 16px;
+        background: rgba(163, 75, 42, 0.08);
+      }
+
+      .result code {
+        display: block;
+        margin-top: 6px;
+        color: var(--accent-strong);
+      }
+
+      textarea {
+        width: 100%;
+        min-height: 180px;
+        padding: 14px 16px;
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: white;
+        font: inherit;
+        line-height: 1.45;
+        resize: vertical;
+      }
+
+      @media (max-width: 640px) {
+        .shell {
+          width: calc(100% - 20px);
+          margin: 10px auto;
+          padding: 20px;
+          border-radius: 22px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <h1>Transcribe tus reuniones</h1>
+        <p>Sube un audio o video, elige unas pocas opciones y deja que el proceso corra solo.</p>
+      </section>
+
+      <form id="transcribe-form">
+        <div class="grid">
+          <label>
+            Archivo
+            <input id="file" name="file" type="file" accept="audio/*,video/*,.mp3,.mp4,.m4a,.wav,.webm,.ogg" required />
+          </label>
+
+          <label>
+            Idioma
+            <input id="language" name="language" type="text" placeholder="es" value="es" />
+          </label>
+
+          <label>
+            Bloques en segundos
+            <input id="chunkSeconds" name="chunkSeconds" type="number" min="30" step="30" value="600" />
+          </label>
+        </div>
+
+        <div class="grid">
+          <label class="check">
+            <input id="diarize" name="diarize" type="checkbox" />
+            <span>Separar por hablante</span>
+          </label>
+        </div>
+
+        <div class="grid">
+          <label>
+            Glosario de terminos
+            <textarea id="glossary" name="glossary" spellcheck="false">Herramientas EDR y XDR: CrowdStrike, CrowdStrike Falcon, Falcon Insight, ESET, ESSET, SentinelOne, Microsoft Defender for Endpoint, Sophos Intercept X, Trend Micro, VMware Carbon Black, Cortex XDR, Trellix, Wazuh.
+Terminos de ciberseguridad: EDR, XDR, MDR, SIEM, SOAR, SOC, IOC, TTP, MITRE ATT&amp;CK, CVE, CVSS, ransomware, phishing, malware, spyware, rootkit, botnet, hardening, threat hunting, incident response, vulnerability management, patch management.
+Seguridad de la informacion: confidencialidad, integridad, disponibilidad, gestion de riesgos, controles, auditoria, cumplimiento, ISO 27001, ISO 27002, NIST, Zero Trust, MFA, SSO, IAM, PAM, DLP, IDS, IPS, firewall, NGFW, VPN, SASE, CASB.
+Herramientas y plataformas comunes: Splunk, QRadar, Elastic, Microsoft Sentinel, Palo Alto Networks, Fortinet, Check Point, Tenable, Nessus, Qualys, Active Directory, Entra ID, Azure, AWS, Google Cloud.</textarea>
+            <small>Si activas separar por hablante, este glosario se omite porque el modelo de diarizacion no acepta prompt.</small>
+          </label>
+        </div>
+
+        <div class="actions">
+          <button class="primary" id="submitButton" type="submit">Iniciar transcripcion</button>
+        </div>
+      </form>
+
+      <section class="panel">
+        <div id="status" class="status">Esperando archivo...</div>
+        <div id="result" class="result" hidden></div>
+        <pre id="logs">Todavia no hay ejecuciones.</pre>
+      </section>
+    </main>
+
+    <script>
+      const form = document.getElementById("transcribe-form");
+      const fileInput = document.getElementById("file");
+      const languageInput = document.getElementById("language");
+      const chunkSecondsInput = document.getElementById("chunkSeconds");
+      const diarizeInput = document.getElementById("diarize");
+      const glossaryInput = document.getElementById("glossary");
+      const statusEl = document.getElementById("status");
+      const logsEl = document.getElementById("logs");
+      const resultEl = document.getElementById("result");
+      const submitButton = document.getElementById("submitButton");
+
+      let pollTimer = null;
+
+      function setStatus(message, kind) {
+        statusEl.textContent = message;
+        statusEl.className = `status ${kind || ""}`.trim();
+      }
+
+      function showResult(job) {
+        if (!job.result) {
+          resultEl.hidden = true;
+          resultEl.innerHTML = "";
+          return;
+        }
+
+        const transcript = job.result.transcriptPath
+          ? `<code>${job.result.transcriptPath}</code>`
+          : "";
+        const metadata = job.result.metadataPath
+          ? `<code>${job.result.metadataPath}</code>`
+          : "";
+
+        resultEl.hidden = false;
+        resultEl.innerHTML = `
+          <strong>Archivos generados</strong>
+          ${transcript}
+          ${metadata}
+        `;
+      }
+
+      function stopPolling() {
+        if (pollTimer) {
+          clearInterval(pollTimer);
+          pollTimer = null;
+        }
+      }
+
+      async function refreshJob(jobId) {
+        const response = await fetch(`/api/jobs/${jobId}`);
+        const job = await response.json();
+
+        if (!response.ok) {
+          throw new Error(job.error || "No se pudo leer el estado del proceso.");
+        }
+
+        logsEl.textContent = (job.logs || []).join("\n") || "Sin logs todavia.";
+        showResult(job);
+
+        if (job.status === "queued" || job.status === "running") {
+          setStatus(job.status === "queued" ? "En cola..." : "Procesando...", "");
+          return;
+        }
+
+        stopPolling();
+        submitButton.disabled = false;
+
+        if (job.status === "success") {
+          setStatus("Listo. La transcripcion termino bien.", "success");
+        } else {
+          setStatus(job.error || "La transcripcion fallo.", "error");
+        }
+      }
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        stopPolling();
+        resultEl.hidden = true;
+        resultEl.innerHTML = "";
+
+        const file = fileInput.files[0];
+        if (!file) {
+          setStatus("Selecciona un archivo primero.", "error");
+          return;
+        }
+
+        submitButton.disabled = true;
+        setStatus("Subiendo archivo...", "");
+        logsEl.textContent = "Preparando envio...";
+
+        try {
+          const params = new URLSearchParams({
+            fileName: file.name,
+            language: languageInput.value.trim(),
+            diarize: String(diarizeInput.checked),
+            chunkSeconds: chunkSecondsInput.value.trim() || "600",
+            glossary: glossaryInput.value.trim(),
+          });
+
+          const response = await fetch(`/api/transcribe?${params.toString()}`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/octet-stream",
+            },
+            body: await file.arrayBuffer(),
+          });
+
+          const payload = await response.json();
+          if (!response.ok) {
+            throw new Error(payload.error || "No se pudo iniciar la transcripcion.");
+          }
+
+          setStatus("Proceso iniciado...", "");
+          logsEl.textContent = "Archivo enviado. Esperando logs...";
+
+          await refreshJob(payload.jobId);
+          pollTimer = setInterval(() => {
+            refreshJob(payload.jobId).catch((error) => {
+              stopPolling();
+              submitButton.disabled = false;
+              setStatus(error.message, "error");
+            });
+          }, 2000);
+        } catch (error) {
+          submitButton.disabled = false;
+          setStatus(error.message, "error");
+          logsEl.textContent = "No se pudo completar la solicitud.";
+        }
+      });
+    </script>
+  </body>
+</html>

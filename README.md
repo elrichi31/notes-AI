@@ -53,9 +53,13 @@ Los resultados quedan en:
 
 ```text
 transcripts/
-  meeting.txt
-  meeting.json
+  06-06-2026/
+    14-30-15/
+      meeting.txt
+      meeting.json
 ```
+
+Cada ejecucion crea su propia carpeta con fecha y hora para mantener las transcripciones ordenadas. Se usa `06-06-2026` en vez de `06/06/2026` porque Windows no permite `/` en nombres de carpeta.
 
 ## Opciones utiles
 
@@ -76,3 +80,20 @@ Si el audio ya esta muy limpio y quieres desactivar filtros:
 ```bash
 npm run transcribe -- --input "meeting.mp4" --language es --no-audio-cleanup
 ```
+
+## Interfaz grafica sencilla
+
+Si prefieres una interfaz local en el navegador:
+
+```bash
+npm run gui
+```
+
+Luego abre:
+
+```text
+http://127.0.0.1:4321
+```
+
+Desde ahi puedes subir el archivo, elegir idioma, cambiar el tamano de los bloques y activar la opcion de separar por hablante.
+Tambien incluye un glosario editable con terminos de EDR, ciberseguridad y seguridad de la informacion para mejorar nombres de herramientas y conceptos.

@@ -32,6 +32,8 @@ Options:
   --audio-bitrate   MP3 bitrate for chunks. Default: ${DEFAULT_AUDIO_BITRATE}, or ${DEFAULT_DIARIZE_AUDIO_BITRATE} with --diarize.
   --no-audio-cleanup Disable local voice cleanup filters before transcription.
   --language        Optional ISO language hint, for example es or en.
+  --prompt          Optional glossary or context to bias transcription wording.
+  --output-name     Optional base name for generated files.
   --keep-chunks     Keep generated audio chunks for inspection.
   --help, -h        Show this help.
 `);
@@ -76,6 +78,12 @@ function parseArgs(argv) {
       args.audioCleanup = false;
     } else if (arg === "--language") {
       args.language = next;
+      i += 1;
+    } else if (arg === "--prompt") {
+      args.prompt = next;
+      i += 1;
+    } else if (arg === "--output-name") {
+      args.outputName = next;
       i += 1;
     } else if (arg === "--speaker") {
       args.speakers.push(parseSpeakerReference(next));
@@ -188,6 +196,24 @@ function formatTime(seconds) {
     .join(":");
 }
 
+function pad(value) {
+  return String(value).padStart(2, "0");
+}
+
+function buildOutputFolderParts(date) {
+  const day = pad(date.getDate());
+  const month = pad(date.getMonth() + 1);
+  const year = date.getFullYear();
+  const hours = pad(date.getHours());
+  const minutes = pad(date.getMinutes());
+  const seconds = pad(date.getSeconds());
+
+  return {
+    dateFolder: `${day}-${month}-${year}`,
+    timeFolder: `${hours}-${minutes}-${seconds}`,
+  };
+}
+
 function displaySpeaker(speaker) {
   if (!speaker) return "Persona";
   if (/^[A-Z]$/.test(speaker)) return `Persona ${speaker}`;
@@ -253,7 +279,7 @@ async function makeChunks({ input, workDir, chunkSeconds, audioBitrate, audioCle
   return chunks;
 }
 
-async function transcribeChunk({ client, chunkPath, model, language, diarize, speakers }) {
+async function transcribeChunk({ client, chunkPath, model, language, diarize, speakers, prompt }) {
   const request = {
     file: fs.createReadStream(chunkPath),
     model,
@@ -261,6 +287,7 @@ async function transcribeChunk({ client, chunkPath, model, language, diarize, sp
   };
 
   if (language) request.language = language;
+  if (prompt) request.prompt = prompt;
   if (diarize) {
     request.chunking_strategy = "auto";
   }
@@ -302,6 +329,23 @@ function transcriptFromRawDiarizedText(segments) {
     .join("\n\n");
 }
 
+function buildPrompt(glossary) {
+  const normalized = glossary?.trim();
+  if (!normalized) return undefined;
+
+  return [
+    "Transcribe con ortografia precisa en el idioma detectado.",
+    "Si escuchas terminos parecidos, prioriza estas herramientas y conceptos:",
+    normalized,
+  ].join("\n");
+}
+
+function resolvePromptForModel(prompt, diarize) {
+  if (!prompt) return undefined;
+  if (diarize) return undefined;
+  return prompt;
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
@@ -311,16 +355,25 @@ async function main() {
   assertConfig(args);
 
   const inputPath = path.resolve(args.input);
+  const createdAt = new Date();
   const outDir = path.resolve(args.outDir);
-  const baseName = safeBaseName(inputPath) || "transcript";
+  const baseName = safeBaseName(args.outputName || inputPath) || "transcript";
   const workDir = path.resolve(".transcribe-work", `${baseName}-${Date.now()}`);
+  const { dateFolder, timeFolder } = buildOutputFolderParts(createdAt);
+  const runOutDir = path.join(outDir, dateFolder, timeFolder);
+  const requestedPrompt = buildPrompt(args.prompt);
+  const prompt = resolvePromptForModel(requestedPrompt, args.diarize);
 
-  fs.mkdirSync(outDir, { recursive: true });
+  fs.mkdirSync(runOutDir, { recursive: true });
 
   console.log(`Model: ${args.model}`);
   console.log(`Speaker labels: ${args.diarize ? "on" : "off"}`);
   console.log(`Audio bitrate: ${args.audioBitrate}`);
   console.log(`Audio cleanup: ${args.audioCleanup ? "on" : "off"}`);
+  console.log(`Glossary prompt: ${prompt ? "on" : "off"}`);
+  if (requestedPrompt && !prompt) {
+    console.log("Glossary prompt skipped: diarization models do not support prompt.");
+  }
 
   const chunks = await makeChunks({
     input: inputPath,
@@ -343,6 +396,7 @@ async function main() {
       language: args.language,
       diarize: args.diarize,
       speakers: args.speakers,
+      prompt,
     });
 
     const resultSegments = result.segments ?? [];
@@ -373,8 +427,8 @@ async function main() {
       : transcriptFromRawDiarizedText(segments)
     : transcriptFromRawDiarizedText(segments);
 
-  const txtPath = path.join(outDir, `${baseName}.txt`);
-  const jsonPath = path.join(outDir, `${baseName}.json`);
+  const txtPath = path.join(runOutDir, `${baseName}.txt`);
+  const jsonPath = path.join(runOutDir, `${baseName}.json`);
 
   fs.writeFileSync(txtPath, `${transcriptText}\n`, "utf8");
   fs.writeFileSync(
@@ -385,10 +439,14 @@ async function main() {
         model: args.model,
         diarize: Boolean(args.diarize),
         knownSpeakers: args.speakers.map((speaker) => speaker.name),
+        prompt: args.prompt ?? "",
+        promptApplied: Boolean(prompt),
         chunkSeconds: args.chunkSeconds,
         audioBitrate: args.audioBitrate,
         audioCleanup: args.audioCleanup,
-        createdAt: new Date().toISOString(),
+        createdAt: createdAt.toISOString(),
+        audioBitrate: args.audioBitrate,
+        audioCleanup: args.audioCleanup,
         segments,
       },
       null,
@@ -409,5 +467,5 @@ async function main() {
 
 main().catch((error) => {
   console.error(`Error: ${error.message}`);
-  process.exit(1);
+  process.exitCode = 1;
 });

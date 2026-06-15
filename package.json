@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "gui": "node src/gui.js",
     "transcribe": "node src/transcribe.js",
     "transcribe:diarize": "node src/transcribe.js --diarize"
   },

@@ -26,6 +26,8 @@ Por defecto usa `gpt-4o-transcribe`, extrae el audio del video, lo convierte a M
 
 Antes de enviar el audio, el CLI aplica limpieza local con ffmpeg: reduce frecuencias que no suelen ser voz, baja ruido constante y normaliza volumen. Esto no agrega llamadas a OpenAI.
 
+Nota: OpenAI ahora limita `gpt-4o-transcribe` y `gpt-4o-mini-transcribe` a respuestas `json` o `text`. Eso evita el error de `verbose_json`, pero tambien significa que esos modelos pueden no devolver segmentos con tiempo para subtitulos `SRT` y `VTT`. Para marcas de tiempo por hablante, usa `gpt-4o-transcribe-diarize`.
+
 ## Transcribir con personas
 
 Para separar la reunion por hablante:
@@ -83,19 +85,26 @@ Si el audio ya esta muy limpio y quieres desactivar filtros:
 npm run transcribe -- --input "meeting.mp4" --language es --no-audio-cleanup
 ```
 
-## Interfaz grafica sencilla
+## Interfaz web con Next.js
 
-Si prefieres una interfaz local en el navegador:
+Si prefieres trabajar desde una interfaz local moderna:
 
 ```bash
-npm run gui
+npm run dev
 ```
 
 Luego abre:
 
 ```text
-http://127.0.0.1:4321
+http://127.0.0.1:3000
 ```
+
+La pantalla principal ahora corre sobre Next.js e incluye:
+
+- Vista principal de transcripcion con mas espacio para el flujo actual.
+- Biblioteca separada en `/biblioteca`.
+- Selector de modelo, glosario editable y estado del proceso en vivo.
+- Generacion de `TXT`, `JSON`, `SRT` y `VTT` con descarga desde la biblioteca.
 
 Desde ahi puedes subir el archivo, elegir el modelo, cambiar el tamano de los bloques y activar la opcion de separar por hablante.
 Tambien incluye un glosario editable precargado en formato de etiquetas para que sea mas facil de revisar y ampliar, por ejemplo:
@@ -108,9 +117,3 @@ Tambien incluye un glosario editable precargado en formato de etiquetas para que
 ```
 
 El glosario ya trae mas palabras de ciberseguridad, identidad, monitoreo, respuesta a incidentes, nube y cumplimiento para mejorar nombres de herramientas y conceptos.
-
-La interfaz tambien incluye:
-
-- Selector de modelo entre `gpt-4o-transcribe`, `gpt-4o-mini-transcribe` y `gpt-4o-transcribe-diarize`.
-- Generacion automatica de `TXT`, `JSON`, `SRT` y `VTT` en cada ejecucion.
-- Biblioteca lateral para explorar transcripciones anteriores y abrir su contenido sin salir de la app.

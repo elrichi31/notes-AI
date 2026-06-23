@@ -240,6 +240,23 @@ function displaySpeaker(speaker) {
   return speaker;
 }
 
+function responseFormatForModel(model, diarize) {
+  if (diarize) return "diarized_json";
+  if (
+    model === DEFAULT_MODEL ||
+    model === MINI_TRANSCRIBE_MODEL ||
+    model === DIARIZATION_MODEL ||
+    model.startsWith("gpt-4o-transcribe")
+  ) {
+    return "json";
+  }
+  return "verbose_json";
+}
+
+function supportsTimedSegments(model, diarize) {
+  return diarize || ![DEFAULT_MODEL, MINI_TRANSCRIBE_MODEL].includes(model);
+}
+
 async function makeChunks({ input, workDir, chunkSeconds, audioBitrate, audioCleanup }) {
   fs.mkdirSync(workDir, { recursive: true });
   const chunkPattern = path.join(workDir, "chunk_%03d.mp3");
@@ -299,7 +316,7 @@ async function transcribeChunk({ client, chunkPath, model, language, diarize, sp
   const request = {
     file: fs.createReadStream(chunkPath),
     model,
-    response_format: diarize ? "diarized_json" : "verbose_json",
+    response_format: responseFormatForModel(model, diarize),
   };
 
   if (language) request.language = language;
@@ -443,6 +460,11 @@ async function main() {
   if (requestedPrompt && !prompt) {
     console.log("Glossary prompt skipped: diarization models do not support prompt.");
   }
+  if (!supportsTimedSegments(args.model, args.diarize)) {
+    console.log(
+      `Caption timing note: ${args.model} returns plain json/text only, so SRT/VTT timing segments are not available.`
+    );
+  }
 
   const chunks = await makeChunks({
     input: inputPath,
@@ -513,6 +535,12 @@ async function main() {
     segments: args.diarize ? allDiarizedSegments : nonDiarizedSegments,
     diarize: Boolean(args.diarize),
   });
+
+  if (captionEntries.length === 0) {
+    console.warn(
+      "Warning: no timed segments were returned, so the generated SRT/VTT files do not include subtitle timings."
+    );
+  }
 
   fs.writeFileSync(txtPath, `${transcriptText}\n`, "utf8");
   fs.writeFileSync(srtPath, `${formatSrt(captionEntries)}\n`, "utf8");

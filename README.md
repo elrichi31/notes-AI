@@ -57,6 +57,8 @@ transcripts/
     14-30-15/
       meeting.txt
       meeting.json
+      meeting.srt
+      meeting.vtt
 ```
 
 Cada ejecucion crea su propia carpeta con fecha y hora para mantener las transcripciones ordenadas. Se usa `06-06-2026` en vez de `06/06/2026` porque Windows no permite `/` en nombres de carpeta.
@@ -95,5 +97,20 @@ Luego abre:
 http://127.0.0.1:4321
 ```
 
-Desde ahi puedes subir el archivo, elegir idioma, cambiar el tamano de los bloques y activar la opcion de separar por hablante.
-Tambien incluye un glosario editable con terminos de EDR, ciberseguridad y seguridad de la informacion para mejorar nombres de herramientas y conceptos.
+Desde ahi puedes subir el archivo, elegir el modelo, cambiar el tamano de los bloques y activar la opcion de separar por hablante.
+Tambien incluye un glosario editable precargado en formato de etiquetas para que sea mas facil de revisar y ampliar, por ejemplo:
+
+```text
+[EDR] [XDR] [SIEM] [SOAR] [SOC] [IOC] [TTP] [MITRE ATT&CK]
+[CrowdStrike] [SentinelOne] [Microsoft Defender for Endpoint] [Wazuh]
+[phishing] [ransomware] [lateral movement] [data exfiltration]
+[IAM] [PAM] [MFA] [Zero Trust] [DLP] [SASE] [CVE] [CVSS]
+```
+
+El glosario ya trae mas palabras de ciberseguridad, identidad, monitoreo, respuesta a incidentes, nube y cumplimiento para mejorar nombres de herramientas y conceptos.
+
+La interfaz tambien incluye:
+
+- Selector de modelo entre `gpt-4o-transcribe`, `gpt-4o-mini-transcribe` y `gpt-4o-transcribe-diarize`.
+- Generacion automatica de `TXT`, `JSON`, `SRT` y `VTT` en cada ejecucion.
+- Biblioteca lateral para explorar transcripciones anteriores y abrir su contenido sin salir de la app.

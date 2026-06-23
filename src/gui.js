@@ -11,6 +11,7 @@ const HOST = "127.0.0.1";
 const PORT = Number.parseInt(process.env.GUI_PORT ?? "4321", 10);
 const ROOT_DIR = process.cwd();
 const HTML_PATH = path.join(ROOT_DIR, "src", "gui.html");
+const TRANSCRIPTS_DIR = path.join(ROOT_DIR, "transcripts");
 const UPLOAD_DIR = path.join(ROOT_DIR, ".transcribe-work", "uploads");
 const MAX_UPLOAD_BYTES = 1024 * 1024 * 1024;
 const jobs = new Map();
@@ -23,6 +24,10 @@ function sendJson(response, statusCode, payload) {
 function sendHtml(response, html) {
   response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
   response.end(html);
+}
+
+function normalizePathForDisplay(filePath) {
+  return filePath.replaceAll("\\", "/");
 }
 
 function sanitizeFileName(fileName) {
@@ -49,6 +54,15 @@ function appendLog(job, message) {
 function extractResultPath(line, label) {
   const prefix = `${label}: `;
   return line.startsWith(prefix) ? line.slice(prefix.length).trim() : null;
+}
+
+function resolveInside(rootDir, relativePath) {
+  const resolved = path.resolve(rootDir, relativePath);
+  const normalizedRoot = path.resolve(rootDir) + path.sep;
+  if (!resolved.startsWith(normalizedRoot) && resolved !== path.resolve(rootDir)) {
+    throw new Error("Ruta fuera del directorio permitido.");
+  }
+  return resolved;
 }
 
 async function readRequestBody(request) {
@@ -88,6 +102,7 @@ async function handleHome(_request, response) {
 async function handleTranscribe(request, response, url) {
   const rawFileName = url.searchParams.get("fileName") ?? "";
   const fileName = sanitizeFileName(rawFileName);
+  const model = (url.searchParams.get("model") ?? "").trim();
   const language = (url.searchParams.get("language") ?? "").trim();
   const diarize = parseBooleanHeader(url.searchParams.get("diarize"));
   const chunkSeconds = parsePositiveInt(url.searchParams.get("chunkSeconds"), 600);
@@ -116,6 +131,9 @@ async function handleTranscribe(request, response, url) {
 
   const cliArgs = ["src/transcribe.js", "--input", uploadPath, "--out-dir", "transcripts"];
 
+  if (model) {
+    cliArgs.push("--model", model);
+  }
   if (language) {
     cliArgs.push("--language", language);
   }
@@ -155,11 +173,19 @@ async function handleTranscribe(request, response, url) {
       appendLog(job, line);
       const txtPath = extractResultPath(line, "Done");
       const jsonPath = extractResultPath(line, "Metadata");
+      const srtPath = extractResultPath(line, "SRT");
+      const vttPath = extractResultPath(line, "VTT");
       if (txtPath) {
         job.result = { ...(job.result ?? {}), transcriptPath: txtPath };
       }
       if (jsonPath) {
         job.result = { ...(job.result ?? {}), metadataPath: jsonPath };
+      }
+      if (srtPath) {
+        job.result = { ...(job.result ?? {}), srtPath };
+      }
+      if (vttPath) {
+        job.result = { ...(job.result ?? {}), vttPath };
       }
     });
   });
@@ -207,6 +233,117 @@ function handleJobStatus(_request, response, jobId) {
   sendJson(response, 200, job);
 }
 
+async function loadTranscriptRun(runDir) {
+  const entries = await fs.promises.readdir(runDir, { withFileTypes: true });
+  const files = entries.filter((entry) => entry.isFile()).map((entry) => entry.name);
+  const jsonFile = files.find((file) => file.endsWith(".json"));
+  const txtFile = files.find((file) => file.endsWith(".txt"));
+  const srtFile = files.find((file) => file.endsWith(".srt"));
+  const vttFile = files.find((file) => file.endsWith(".vtt"));
+  const metadataPath = jsonFile ? path.join(runDir, jsonFile) : null;
+  const transcriptPath = txtFile ? path.join(runDir, txtFile) : null;
+  const srtPath = srtFile ? path.join(runDir, srtFile) : null;
+  const vttPath = vttFile ? path.join(runDir, vttFile) : null;
+
+  let metadata = null;
+  if (metadataPath) {
+    try {
+      metadata = JSON.parse(await fs.promises.readFile(metadataPath, "utf8"));
+    } catch {
+      metadata = null;
+    }
+  }
+
+  const transcriptContent = transcriptPath
+    ? await fs.promises.readFile(transcriptPath, "utf8").catch(() => "")
+    : "";
+
+  const relativeRunDir = path.relative(TRANSCRIPTS_DIR, runDir);
+  const createdAt = metadata?.createdAt ?? (await fs.promises.stat(runDir)).mtime.toISOString();
+
+  return {
+    id: relativeRunDir,
+    title: transcriptPath ? path.basename(transcriptPath, ".txt") : path.basename(runDir),
+    createdAt,
+    model: metadata?.model ?? "desconocido",
+    diarize: Boolean(metadata?.diarize),
+    transcriptPath: transcriptPath ? normalizePathForDisplay(path.relative(ROOT_DIR, transcriptPath)) : null,
+    metadataPath: metadataPath ? normalizePathForDisplay(path.relative(ROOT_DIR, metadataPath)) : null,
+    srtPath: srtPath ? normalizePathForDisplay(path.relative(ROOT_DIR, srtPath)) : null,
+    vttPath: vttPath ? normalizePathForDisplay(path.relative(ROOT_DIR, vttPath)) : null,
+    preview: transcriptContent.trim().slice(0, 240),
+    transcriptContent,
+    srtContent: srtPath ? await fs.promises.readFile(srtPath, "utf8").catch(() => "") : "",
+    vttContent: vttPath ? await fs.promises.readFile(vttPath, "utf8").catch(() => "") : "",
+    metadata,
+  };
+}
+
+async function listTranscriptRuns() {
+  if (!fs.existsSync(TRANSCRIPTS_DIR)) {
+    return [];
+  }
+
+  const dateEntries = await fs.promises.readdir(TRANSCRIPTS_DIR, { withFileTypes: true });
+  const runDirs = [];
+
+  for (const dateEntry of dateEntries) {
+    if (!dateEntry.isDirectory()) continue;
+    const dateDir = path.join(TRANSCRIPTS_DIR, dateEntry.name);
+    const timeEntries = await fs.promises.readdir(dateDir, { withFileTypes: true });
+
+    for (const timeEntry of timeEntries) {
+      if (!timeEntry.isDirectory()) continue;
+      runDirs.push(path.join(dateDir, timeEntry.name));
+    }
+  }
+
+  const runs = [];
+  for (const runDir of runDirs) {
+    try {
+      runs.push(await loadTranscriptRun(runDir));
+    } catch {
+      // Ignore malformed transcript folders so the UI still loads.
+    }
+  }
+
+  return runs
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .map((run) => ({
+      id: run.id,
+      title: run.title,
+      createdAt: run.createdAt,
+      model: run.model,
+      diarize: run.diarize,
+      transcriptPath: run.transcriptPath,
+      srtPath: run.srtPath,
+      vttPath: run.vttPath,
+      preview: run.preview,
+    }));
+}
+
+async function handleTranscriptList(_request, response) {
+  const runs = await listTranscriptRuns();
+  sendJson(response, 200, { runs });
+}
+
+async function handleTranscriptDetail(_request, response, url) {
+  const runId = url.searchParams.get("run") ?? "";
+  if (!runId) {
+    sendJson(response, 400, { error: "Falta el identificador de la transcripcion." });
+    return;
+  }
+
+  const runDir = resolveInside(TRANSCRIPTS_DIR, runId);
+  if (!fs.existsSync(runDir)) {
+    sendJson(response, 404, { error: "Transcripcion no encontrada." });
+    return;
+  }
+
+  const run = await loadTranscriptRun(runDir);
+  sendJson(response, 200, { run });
+}
+
 const server = http.createServer(async (request, response) => {
   try {
     const url = new URL(request.url ?? "/", `http://${HOST}:${PORT}`);
@@ -224,6 +361,16 @@ const server = http.createServer(async (request, response) => {
     if (request.method === "GET" && url.pathname.startsWith("/api/jobs/")) {
       const jobId = url.pathname.slice("/api/jobs/".length);
       handleJobStatus(request, response, jobId);
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/transcripts") {
+      await handleTranscriptList(request, response);
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/transcript") {
+      await handleTranscriptDetail(request, response, url);
       return;
     }
 

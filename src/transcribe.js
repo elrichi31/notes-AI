@@ -15,6 +15,7 @@ const DEFAULT_DIARIZE_AUDIO_BITRATE = "64k";
 const DEFAULT_SAMPLE_RATE = "16000";
 const DEFAULT_AUDIO_FILTERS = "highpass=f=80,lowpass=f=8000,afftdn=nf=-25,loudnorm=I=-16:TP=-1.5:LRA=11";
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+const MINI_TRANSCRIBE_MODEL = "gpt-4o-mini-transcribe";
 
 function printHelp() {
   console.log(`
@@ -26,6 +27,7 @@ Options:
   --input, -i       Video or audio file to transcribe. Required.
   --out-dir         Output directory. Default: transcripts
   --model           OpenAI transcription model. Default: ${DEFAULT_MODEL}
+                    Useful values: ${DEFAULT_MODEL}, ${MINI_TRANSCRIBE_MODEL}, ${DIARIZATION_MODEL}
   --diarize         Label who spoke in each segment with ${DIARIZATION_MODEL}.
   --speaker         Optional known speaker reference as Name=audio.wav. Repeat up to 4 times.
   --chunk-seconds   Chunk length in seconds. Default: ${DEFAULT_CHUNK_SECONDS}
@@ -196,6 +198,20 @@ function formatTime(seconds) {
     .join(":");
 }
 
+function formatCaptionTimestamp(seconds, separator) {
+  const safeMs = Math.max(0, Math.round((seconds ?? 0) * 1000));
+  const hours = Math.floor(safeMs / 3_600_000);
+  const minutes = Math.floor((safeMs % 3_600_000) / 60_000);
+  const remainingSeconds = Math.floor((safeMs % 60_000) / 1000);
+  const milliseconds = safeMs % 1000;
+
+  return [
+    String(hours).padStart(2, "0"),
+    String(minutes).padStart(2, "0"),
+    String(remainingSeconds).padStart(2, "0"),
+  ].join(":") + `${separator}${String(milliseconds).padStart(3, "0")}`;
+}
+
 function pad(value) {
   return String(value).padStart(2, "0");
 }
@@ -283,7 +299,7 @@ async function transcribeChunk({ client, chunkPath, model, language, diarize, sp
   const request = {
     file: fs.createReadStream(chunkPath),
     model,
-    response_format: diarize ? "diarized_json" : "json",
+    response_format: diarize ? "diarized_json" : "verbose_json",
   };
 
   if (language) request.language = language;
@@ -310,6 +326,15 @@ function flattenDiarizedSegments(segments, chunkIndex, chunkSeconds) {
   }));
 }
 
+function flattenSegments(segments, chunkIndex, chunkSeconds) {
+  const chunkOffset = chunkIndex * chunkSeconds;
+  return segments.map((segment) => ({
+    ...segment,
+    start: typeof segment.start === "number" ? segment.start + chunkOffset : undefined,
+    end: typeof segment.end === "number" ? segment.end + chunkOffset : undefined,
+  }));
+}
+
 function formatDiarizedTranscript(diarizedSegments) {
   return diarizedSegments
     .map((segment) => {
@@ -327,6 +352,50 @@ function transcriptFromRawDiarizedText(segments) {
     .map((segment) => segment.text.trim())
     .filter(Boolean)
     .join("\n\n");
+}
+
+function buildCaptionEntries({ segments, diarize }) {
+  if (diarize) {
+    return segments
+      .filter((segment) => typeof segment.start === "number" && typeof segment.end === "number")
+      .map((segment) => ({
+        start: segment.start,
+        end: segment.end,
+        text: `${displaySpeaker(segment.speaker)}: ${segment.text?.trim() ?? ""}`.trim(),
+      }))
+      .filter((segment) => segment.text);
+  }
+
+  return segments
+    .filter((segment) => typeof segment.start === "number" && typeof segment.end === "number")
+    .map((segment) => ({
+      start: segment.start,
+      end: segment.end,
+      text: segment.text?.trim() ?? "",
+    }))
+    .filter((segment) => segment.text);
+}
+
+function formatSrt(entries) {
+  return entries
+    .map(
+      (entry, index) =>
+        `${index + 1}\n` +
+        `${formatCaptionTimestamp(entry.start, ",")} --> ${formatCaptionTimestamp(entry.end, ",")}\n` +
+        `${entry.text}`,
+    )
+    .join("\n\n");
+}
+
+function formatVtt(entries) {
+  const body = entries
+    .map(
+      (entry) =>
+        `${formatCaptionTimestamp(entry.start, ".")} --> ${formatCaptionTimestamp(entry.end, ".")}\n${entry.text}`,
+    )
+    .join("\n\n");
+
+  return `WEBVTT\n\n${body}`;
 }
 
 function buildPrompt(glossary) {
@@ -385,6 +454,7 @@ async function main() {
 
   const client = new OpenAI();
   const segments = [];
+  const nonDiarizedSegments = [];
 
   for (let index = 0; index < chunks.length; index += 1) {
     const chunk = chunks[index];
@@ -410,14 +480,22 @@ async function main() {
     const diarizedSegments = args.diarize
       ? flattenDiarizedSegments(resultSegments, index, args.chunkSeconds)
       : [];
+    const plainSegments = args.diarize
+      ? []
+      : flattenSegments(resultSegments, index, args.chunkSeconds);
 
     segments.push({
       index,
       file: path.basename(chunk),
       text: result.text ?? "",
       diarizedSegments,
+      plainSegments,
       raw: result,
     });
+
+    if (plainSegments.length > 0) {
+      nonDiarizedSegments.push(...plainSegments);
+    }
   }
 
   const allDiarizedSegments = segments.flatMap((segment) => segment.diarizedSegments);
@@ -429,8 +507,16 @@ async function main() {
 
   const txtPath = path.join(runOutDir, `${baseName}.txt`);
   const jsonPath = path.join(runOutDir, `${baseName}.json`);
+  const srtPath = path.join(runOutDir, `${baseName}.srt`);
+  const vttPath = path.join(runOutDir, `${baseName}.vtt`);
+  const captionEntries = buildCaptionEntries({
+    segments: args.diarize ? allDiarizedSegments : nonDiarizedSegments,
+    diarize: Boolean(args.diarize),
+  });
 
   fs.writeFileSync(txtPath, `${transcriptText}\n`, "utf8");
+  fs.writeFileSync(srtPath, `${formatSrt(captionEntries)}\n`, "utf8");
+  fs.writeFileSync(vttPath, `${formatVtt(captionEntries)}\n`, "utf8");
   fs.writeFileSync(
     jsonPath,
     JSON.stringify(
@@ -445,8 +531,9 @@ async function main() {
         audioBitrate: args.audioBitrate,
         audioCleanup: args.audioCleanup,
         createdAt: createdAt.toISOString(),
-        audioBitrate: args.audioBitrate,
-        audioCleanup: args.audioCleanup,
+        txtPath,
+        srtPath,
+        vttPath,
         segments,
       },
       null,
@@ -463,6 +550,8 @@ async function main() {
 
   console.log(`Done: ${txtPath}`);
   console.log(`Metadata: ${jsonPath}`);
+  console.log(`SRT: ${srtPath}`);
+  console.log(`VTT: ${vttPath}`);
 }
 
 main().catch((error) => {

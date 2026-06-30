@@ -4,15 +4,21 @@ import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import {
   ArrowLeft,
+  ArrowRight,
   Check,
+  CheckCircle2,
   ChevronDown,
   Copy,
   Download,
   FileText,
+  Lightbulb,
+  ListChecks,
   Loader2,
   Search,
+  Sparkles,
+  Users,
 } from "lucide-react"
-import { buttonVariants } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
   Select,
@@ -59,6 +65,27 @@ type Entry = {
 type FormatKey = "TXT" | "SRT" | "VTT" | "JSON"
 type DateFilter = "all" | "today" | "week"
 type SortOrder = "newest" | "oldest"
+
+type Commitment = {
+  person: string
+  task: string
+  dueDate: string | null
+}
+
+type MeetingSummary = {
+  overview: string
+  keyTopics: string[]
+  decisions: string[]
+  commitments: Commitment[]
+  actionItems: string[]
+  nextSteps: string | null
+}
+
+type SummaryState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "done"; data: MeetingSummary }
+  | { status: "error"; message: string }
 
 function formatDateLabel(value: string) {
   const date = new Date(value)
@@ -188,6 +215,7 @@ export function LibraryView() {
   const [detailError, setDetailError] = useState<string | null>(null)
   const [copyState, setCopyState] = useState<"idle" | "done">("idle")
   const [viewFormat, setViewFormat] = useState<FormatKey>("TXT")
+  const [summary, setSummary] = useState<SummaryState>({ status: "idle" })
   const [modelFilter, setModelFilter] = useState<string>("all")
   const [dateFilter, setDateFilter] = useState<DateFilter>("all")
   const [sortOrder, setSortOrder] = useState<SortOrder>("newest")
@@ -300,6 +328,7 @@ export function LibraryView() {
     }
 
     if (!selectedId) return
+    setSummary({ status: "idle" })
     loadDetail(selectedId)
   }, [selectedId])
 
@@ -313,10 +342,29 @@ export function LibraryView() {
 
   async function copyCurrentContent() {
     if (!selectedContent) return
-
     await navigator.clipboard.writeText(selectedContent)
     setCopyState("done")
     window.setTimeout(() => setCopyState("idle"), 1800)
+  }
+
+  async function handleSummarize() {
+    if (!selectedRun || summary.status === "loading") return
+    setSummary({ status: "loading" })
+    try {
+      const res = await fetch("/api/summarize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ runId: selectedRun.id }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? "No se pudo generar el resumen.")
+      setSummary({ status: "done", data: json.summary })
+    } catch (err) {
+      setSummary({
+        status: "error",
+        message: err instanceof Error ? err.message : "Error al generar el resumen.",
+      })
+    }
   }
 
   return (
@@ -510,7 +558,141 @@ export function LibraryView() {
                       </p>
                     )}
                   </div>
+
+                  <div className="shrink-0">
+                    <Button
+                      onClick={handleSummarize}
+                      disabled={summary.status === "loading"}
+                      variant={summary.status === "done" ? "secondary" : "default"}
+                      size="sm"
+                      className="gap-2"
+                    >
+                      {summary.status === "loading" ? (
+                        <>
+                          <Loader2 className="size-3.5 animate-spin" />
+                          Analizando...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="size-3.5" />
+                          {summary.status === "done" ? "Regenerar resumen" : "Resumir con AI"}
+                        </>
+                      )}
+                    </Button>
+                    {summary.status === "error" && (
+                      <p className="mt-1.5 max-w-48 text-xs text-destructive">{summary.message}</p>
+                    )}
+                  </div>
                 </div>
+
+                {/* Panel de resumen AI */}
+                {summary.status === "done" && (
+                  <div className="mt-4 rounded-xl border border-brand/20 bg-brand/5 overflow-hidden">
+                    <div className="flex items-center gap-2 border-b border-brand/15 bg-brand/10 px-4 py-2.5">
+                      <Sparkles className="size-4 text-brand" />
+                      <span className="text-sm font-semibold text-foreground">Resumen de la reunión</span>
+                    </div>
+
+                    <div className="divide-y divide-brand/10">
+                      {summary.data.overview && (
+                        <div className="px-4 py-3">
+                          <p className="text-sm leading-relaxed text-foreground/90">
+                            {summary.data.overview}
+                          </p>
+                        </div>
+                      )}
+
+                      <div className="grid gap-0 sm:grid-cols-2">
+                        {summary.data.keyTopics.length > 0 && (
+                          <div className="px-4 py-3 sm:border-r sm:border-brand/10">
+                            <h4 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                              <Lightbulb className="size-3.5" />
+                              Temas tratados
+                            </h4>
+                            <ul className="space-y-1.5">
+                              {summary.data.keyTopics.map((topic, i) => (
+                                <li key={i} className="flex items-start gap-2 text-sm text-foreground/85">
+                                  <span className="mt-2 size-1.5 shrink-0 rounded-full bg-brand" />
+                                  {topic}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {summary.data.decisions.length > 0 && (
+                          <div className="px-4 py-3">
+                            <h4 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                              <CheckCircle2 className="size-3.5" />
+                              Decisiones
+                            </h4>
+                            <ul className="space-y-1.5">
+                              {summary.data.decisions.map((d, i) => (
+                                <li key={i} className="flex items-start gap-2 text-sm text-foreground/85">
+                                  <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-brand" />
+                                  {d}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+
+                      {summary.data.commitments.length > 0 && (
+                        <div className="px-4 py-3">
+                          <h4 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                            <Users className="size-3.5" />
+                            Compromisos
+                          </h4>
+                          <ul className="grid gap-2 sm:grid-cols-2">
+                            {summary.data.commitments.map((c, i) => (
+                              <li key={i} className="rounded-lg border border-border bg-background/60 p-2.5">
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-xs font-medium text-brand">{c.person}</span>
+                                  {c.dueDate && (
+                                    <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                                      {c.dueDate}
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="mt-1 text-sm text-foreground/85">{c.task}</p>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {summary.data.actionItems.length > 0 && (
+                        <div className="px-4 py-3">
+                          <h4 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                            <ListChecks className="size-3.5" />
+                            Tareas a realizar
+                          </h4>
+                          <ul className="space-y-1.5">
+                            {summary.data.actionItems.map((item, i) => (
+                              <li key={i} className="flex items-start gap-2 text-sm text-foreground/85">
+                                <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded border border-border bg-background text-xs text-muted-foreground">
+                                  {i + 1}
+                                </span>
+                                {item}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {summary.data.nextSteps && (
+                        <div className="px-4 py-3">
+                          <h4 className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                            <ArrowRight className="size-3.5" />
+                            Próximos pasos
+                          </h4>
+                          <p className="text-sm text-foreground/85">{summary.data.nextSteps}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 <div className="mt-4 rounded-xl border border-border bg-background">
                   <div className="flex flex-col gap-3 border-b border-border px-4 py-3 lg:flex-row lg:items-center lg:justify-between">

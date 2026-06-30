@@ -78,6 +78,7 @@ export function Workspace() {
   const [status, setStatus] = useState<RunStatus>("idle")
   const [progress, setProgress] = useState(0)
   const [logs, setLogs] = useState<string[]>([])
+  const [jobId, setJobId] = useState<string | null>(null)
   const jobIdRef = useRef<string | null>(null)
   const timer = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -153,6 +154,7 @@ export function Workspace() {
       }
 
       jobIdRef.current = payload.jobId
+      setJobId(payload.jobId)
       await refreshJob(payload.jobId)
 
       if (timer.current) clearInterval(timer.current)
@@ -306,6 +308,7 @@ export function Workspace() {
           progress={progress}
           logs={logs}
           fileName={file?.name ?? null}
+          jobId={jobId}
         />
       </aside>
     </div>

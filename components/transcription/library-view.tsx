@@ -140,7 +140,7 @@ export function LibraryView() {
     const { id } = deleteState
     setDeleteState({ phase: "deleting", id })
     try {
-      const res = await fetch(`/api/transcripts/${encodeURIComponent(id)}`, { method: "DELETE" })
+      const res = await fetch(`/api/transcripts/delete?runId=${encodeURIComponent(id)}`, { method: "DELETE" })
       if (!res.ok) {
         const json = await res.json().catch(() => ({}))
         throw new Error(json.error ?? "No se pudo eliminar.")

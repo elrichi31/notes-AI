@@ -3,11 +3,14 @@
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import {
+  AlertTriangle,
   ArrowLeft,
   FileText,
+  Loader2,
   Search,
+  Trash2,
 } from "lucide-react"
-import { buttonVariants } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
   Select,
@@ -99,6 +102,11 @@ function isWithinLastDays(date: Date, days: number, reference: Date) {
   return reference.getTime() - date.getTime() <= days * 24 * 60 * 60 * 1000
 }
 
+type DeleteState =
+  | { phase: "idle" }
+  | { phase: "confirm"; id: string; title: string }
+  | { phase: "deleting"; id: string }
+
 export function LibraryView() {
   const [query, setQuery] = useState("")
   const [entries, setEntries] = useState<Entry[]>([])
@@ -107,6 +115,7 @@ export function LibraryView() {
   const [modelFilter, setModelFilter] = useState<string>("all")
   const [dateFilter, setDateFilter] = useState<DateFilter>("all")
   const [sortOrder, setSortOrder] = useState<SortOrder>("newest")
+  const [deleteState, setDeleteState] = useState<DeleteState>({ phase: "idle" })
 
   useEffect(() => {
     async function loadRuns() {
@@ -125,6 +134,24 @@ export function LibraryView() {
     }
     loadRuns()
   }, [])
+
+  async function confirmDelete() {
+    if (deleteState.phase !== "confirm") return
+    const { id } = deleteState
+    setDeleteState({ phase: "deleting", id })
+    try {
+      const res = await fetch(`/api/transcripts/${encodeURIComponent(id)}`, { method: "DELETE" })
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        throw new Error(json.error ?? "No se pudo eliminar.")
+      }
+      setEntries((prev) => prev.filter((e) => e.id !== id))
+    } catch {
+      // silently reset — user can retry
+    } finally {
+      setDeleteState({ phase: "idle" })
+    }
+  }
 
   const modelOptions = useMemo(() => {
     return [...new Set(entries.map((e) => e.model))].sort()
@@ -215,41 +242,110 @@ export function LibraryView() {
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {filtered.map((entry) => (
-            <Link
-              key={entry.id}
-              href={`/biblioteca/${encodeURIComponent(entry.id)}`}
-              className="group relative flex flex-col rounded-2xl border border-border bg-card p-4 transition-colors hover:border-brand/40 hover:bg-secondary/20"
-            >
-              <div className="flex items-start gap-3">
-                <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg bg-brand/15 text-brand transition-colors group-hover:bg-brand/25">
-                  <FileText className="size-4" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <h3 className="text-sm font-semibold leading-snug">{entry.displayTitle}</h3>
-                  <p className="mt-0.5 text-xs text-muted-foreground">
-                    {entry.model} · {formatDateLabel(entry.createdAt)}
-                  </p>
-                </div>
-              </div>
-
-              {(entry.summary || entry.preview) && (
-                <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
-                  {entry.summary || entry.preview}
-                </p>
-              )}
-
-              <div className="mt-3 flex flex-wrap gap-1.5">
-                {entry.formats.map((format) => (
-                  <span
-                    key={format}
-                    className="rounded-md border border-border bg-secondary/45 px-2 py-0.5 font-mono text-[11px] text-muted-foreground"
-                  >
-                    {format}
+            <div key={entry.id} className="group relative flex flex-col rounded-2xl border border-border bg-card transition-colors hover:border-brand/40 hover:bg-secondary/20">
+              <Link
+                href={`/biblioteca/${encodeURIComponent(entry.id)}`}
+                className="flex flex-1 flex-col p-4"
+              >
+                <div className="flex items-start gap-3">
+                  <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg bg-brand/15 text-brand transition-colors group-hover:bg-brand/25">
+                    <FileText className="size-4" />
                   </span>
-                ))}
-              </div>
-            </Link>
+                  <div className="min-w-0 flex-1 pr-7">
+                    <h3 className="line-clamp-2 text-sm font-semibold leading-snug">{entry.displayTitle}</h3>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {entry.model} · {formatDateLabel(entry.createdAt)}
+                    </p>
+                  </div>
+                </div>
+
+                {(entry.summary || entry.preview) && (
+                  <p className="mt-3 line-clamp-3 text-xs leading-relaxed text-muted-foreground">
+                    {entry.summary || entry.preview}
+                  </p>
+                )}
+
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {entry.formats.map((format) => (
+                    <span
+                      key={format}
+                      className="rounded-md border border-border bg-secondary/45 px-2 py-0.5 font-mono text-[11px] text-muted-foreground"
+                    >
+                      {format}
+                    </span>
+                  ))}
+                </div>
+              </Link>
+
+              <button
+                onClick={(e) => {
+                  e.preventDefault()
+                  setDeleteState({ phase: "confirm", id: entry.id, title: entry.displayTitle })
+                }}
+                className="absolute right-3 top-3 flex size-7 items-center justify-center rounded-lg text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
+                aria-label="Eliminar transcripcion"
+              >
+                <Trash2 className="size-3.5" />
+              </button>
+            </div>
           ))}
+        </div>
+      )}
+      {/* Modal de confirmación de borrado */}
+      {(deleteState.phase === "confirm" || deleteState.phase === "deleting") && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
+          onClick={(e) => {
+            if (deleteState.phase === "deleting") return
+            if (e.target === e.currentTarget) setDeleteState({ phase: "idle" })
+          }}
+        >
+          <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-6 shadow-2xl">
+            <div className="flex items-start gap-3">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-destructive/10">
+                <AlertTriangle className="size-5 text-destructive" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h2 className="text-sm font-semibold">Eliminar transcripcion</h2>
+                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                  ¿Seguro que quieres eliminar{" "}
+                  <span className="font-medium text-foreground">
+                    {deleteState.phase === "confirm" ? deleteState.title : ""}
+                  </span>
+                  ? Esta accion no se puede deshacer.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-5 flex gap-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                disabled={deleteState.phase === "deleting"}
+                onClick={() => setDeleteState({ phase: "idle" })}
+              >
+                Cancelar
+              </Button>
+              <Button
+                variant="destructive"
+                className="flex-1 gap-1.5"
+                disabled={deleteState.phase === "deleting"}
+                onClick={confirmDelete}
+              >
+                {deleteState.phase === "deleting" ? (
+                  <>
+                    <Loader2 className="size-3.5 animate-spin" />
+                    Eliminando...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="size-3.5" />
+                    Eliminar
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
         </div>
       )}
     </div>

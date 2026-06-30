@@ -23,19 +23,21 @@ import { cn } from "@/lib/utils"
 
 export type RunStatus = "idle" | "running" | "done" | "error"
 
-type Commitment = {
-  person: string
-  task: string
-  dueDate: string | null
-}
+type Commitment = { person: string; task: string; dueDate: string | null }
+type KeyTopic = { title: string; detail: string }
+type Decision = { decision: string; rationale: string | null }
+type ActionItem = { item: string; owner: string | null; priority: string | null }
 
 type MeetingSummary = {
   overview: string
-  keyTopics: string[]
-  decisions: string[]
+  highlights: string[]
+  keyTopics: KeyTopic[]
+  decisions: Decision[]
   commitments: Commitment[]
-  actionItems: string[]
+  actionItems: ActionItem[]
+  blockers: string[]
   nextSteps: string | null
+  sentiment: string | null
 }
 
 type SummaryState =
@@ -190,11 +192,11 @@ export function StatusPanel({
                   <Lightbulb className="size-3.5" />
                   Temas tratados
                 </h4>
-                <ul className="space-y-1.5">
+                <ul className="space-y-2">
                   {summary.data.keyTopics.map((topic, i) => (
-                    <li key={i} className="flex items-start gap-2 text-sm text-foreground/85">
-                      <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-brand" />
-                      {topic}
+                    <li key={i} className="text-sm text-foreground/85">
+                      <span className="font-medium">{topic.title}</span>
+                      {topic.detail && <p className="mt-0.5 text-xs text-muted-foreground">{topic.detail}</p>}
                     </li>
                   ))}
                 </ul>
@@ -208,11 +210,14 @@ export function StatusPanel({
                   <CheckCircle2 className="size-3.5" />
                   Decisiones tomadas
                 </h4>
-                <ul className="space-y-1.5">
-                  {summary.data.decisions.map((decision, i) => (
+                <ul className="space-y-2">
+                  {summary.data.decisions.map((d, i) => (
                     <li key={i} className="flex items-start gap-2 text-sm text-foreground/85">
                       <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-brand" />
-                      {decision}
+                      <div>
+                        <span>{d.decision}</span>
+                        {d.rationale && <p className="mt-0.5 text-xs text-muted-foreground">{d.rationale}</p>}
+                      </div>
                     </li>
                   ))}
                 </ul>
@@ -252,12 +257,15 @@ export function StatusPanel({
                   Tareas a realizar
                 </h4>
                 <ul className="space-y-1.5">
-                  {summary.data.actionItems.map((item, i) => (
+                  {summary.data.actionItems.map((a, i) => (
                     <li key={i} className="flex items-start gap-2 text-sm text-foreground/85">
                       <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded border border-border text-xs text-muted-foreground">
                         {i + 1}
                       </span>
-                      {item}
+                      <div>
+                        <span>{a.item}</span>
+                        {a.owner && <span className="ml-1 text-xs text-muted-foreground">→ {a.owner}</span>}
+                      </div>
                     </li>
                   ))}
                 </ul>

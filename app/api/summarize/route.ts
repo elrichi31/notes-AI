@@ -7,19 +7,19 @@ export const runtime = "nodejs"
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const { jobId, runId } = body as { jobId?: string; runId?: string }
+    const { jobId, runId, force } = body as { jobId?: string; runId?: string; force?: boolean }
 
     let transcriptPath: string | undefined
+    let metadataPath: string | undefined
 
     if (runId) {
-      // Called from biblioteca — resolve transcript path from runId
       const run = await getTranscriptRun(runId)
       if (!run?.transcriptPath) {
         return NextResponse.json({ error: "No se encontro la transcripcion." }, { status: 404 })
       }
       transcriptPath = run.transcriptPath
+      metadataPath = run.metadataPath ?? undefined
     } else if (jobId) {
-      // Called from workspace — resolve via job
       const job = await getJob(jobId)
       if (!job) {
         return NextResponse.json({ error: "Trabajo no encontrado." }, { status: 404 })
@@ -28,6 +28,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "La transcripcion aun no ha terminado." }, { status: 400 })
       }
       transcriptPath = job.result?.transcriptPath
+      metadataPath = job.result?.metadataPath ?? undefined
       if (!transcriptPath) {
         return NextResponse.json({ error: "No se encontro la transcripcion." }, { status: 404 })
       }
@@ -35,7 +36,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Falta jobId o runId." }, { status: 400 })
     }
 
-    const summary = await generateDetailedMeetingSummary({ transcriptPath })
+    const summary = await generateDetailedMeetingSummary({ transcriptPath, metadataPath, force })
     return NextResponse.json({ summary })
   } catch (error) {
     return NextResponse.json(

@@ -32,6 +32,7 @@ type TranscriptRun = {
   diarize: boolean
   aiTitle?: string
   aiDescription?: string
+  detailedSummary?: MeetingSummary | null
   transcriptPath?: string | null
   srtPath?: string | null
   vttPath?: string | null
@@ -159,6 +160,9 @@ export function TranscriptDetailView({ runId }: { runId: string }) {
         setRun(loaded)
         const formats = inferFormats(loaded)
         setViewFormat(formats.includes("TXT") ? "TXT" : formats[0] ?? "TXT")
+        if (loaded.detailedSummary?.overview) {
+          setSummary({ status: "done", data: loaded.detailedSummary })
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Error al cargar la transcripción.")
       } finally {
@@ -175,7 +179,7 @@ export function TranscriptDetailView({ runId }: { runId: string }) {
       const res = await fetch("/api/summarize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ runId: run.id }),
+        body: JSON.stringify({ runId: run.id, force: hasSummary }),
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? "No se pudo generar el resumen.")

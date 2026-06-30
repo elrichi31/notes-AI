@@ -69,55 +69,16 @@ function inferFormats(entry: Partial<TranscriptRun>): FormatKey[] {
   return formats
 }
 
-function compactWhitespace(value: string) {
-  return value.replace(/\s+/g, " ").trim()
-}
-
-function isRawTimestampTitle(title: string) {
-  return /^\d{4}[-_]\d{2}[-_]\d{2}[-_]\d{2}[-_]\d{2}[-_]\d{2}$/.test(title)
-}
-
-function sentenceCasePreview(preview: string) {
-  const compact = compactWhitespace(preview)
-  if (!compact) return "Reunion sin titulo"
-  const firstSentence = compact.split(/[.!?]/)[0] || compact
-  const words = firstSentence.split(" ").slice(0, 8).join(" ")
-  return words.slice(0, 62).trim() || "Reunion sin titulo"
-}
-
-function splitLongTitle(title: string, fallbackSummary: string) {
-  const cleanTitle = compactWhitespace(title)
-
-  if (!cleanTitle || isRawTimestampTitle(cleanTitle)) {
-    return { displayTitle: sentenceCasePreview(fallbackSummary), displaySubtitle: "" }
-  }
-
-  const parentheticalIndex = cleanTitle.indexOf(" (")
-  if (parentheticalIndex > 0) {
-    return {
-      displayTitle: cleanTitle.slice(0, parentheticalIndex).trim(),
-      displaySubtitle: cleanTitle.slice(parentheticalIndex + 1).replace(/[()]/g, "").trim(),
-    }
-  }
-
-  if (cleanTitle.length > 72) {
-    return { displayTitle: `${cleanTitle.slice(0, 69).trimEnd()}...`, displaySubtitle: "" }
-  }
-
-  return { displayTitle: cleanTitle, displaySubtitle: "" }
-}
-
 function buildEntry(run: TranscriptRun): Entry {
   const preview = run.preview || ""
-  const summary = compactWhitespace(run.aiDescription?.trim() || preview)
-  const preferredTitle = compactWhitespace(run.aiTitle?.trim() || run.title)
-  const { displayTitle, displaySubtitle } = splitLongTitle(preferredTitle, summary || preview)
+  const displayTitle = (run.aiTitle?.trim() || run.title).replace(/\s+/g, " ").trim()
+  const summary = (run.aiDescription?.trim() || preview).replace(/\s+/g, " ").trim()
 
   return {
     id: run.id,
     rawTitle: run.title,
     displayTitle,
-    displaySubtitle,
+    displaySubtitle: "",
     summary,
     model: run.model,
     createdAt: run.createdAt,
@@ -264,10 +225,7 @@ export function LibraryView() {
                   <FileText className="size-4" />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <h3 className="truncate text-sm font-semibold leading-snug">{entry.displayTitle}</h3>
-                  {entry.displaySubtitle && (
-                    <p className="truncate text-[11px] text-muted-foreground/80">{entry.displaySubtitle}</p>
-                  )}
+                  <h3 className="text-sm font-semibold leading-snug">{entry.displayTitle}</h3>
                   <p className="mt-0.5 text-xs text-muted-foreground">
                     {entry.model} · {formatDateLabel(entry.createdAt)}
                   </p>
@@ -275,7 +233,7 @@ export function LibraryView() {
               </div>
 
               {(entry.summary || entry.preview) && (
-                <p className="mt-3 line-clamp-3 text-xs leading-relaxed text-muted-foreground">
+                <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
                   {entry.summary || entry.preview}
                 </p>
               )}

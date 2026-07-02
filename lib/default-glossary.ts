@@ -172,7 +172,6 @@ export const DEFAULT_GLOSSARY: string[] = [
   "ProxyShell",
   "ProxyLogon",
   "Purple Team",
-  "QRadar",
   "Qualys VMDR",
   "RBA",
   "RBAC",

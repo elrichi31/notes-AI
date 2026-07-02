@@ -40,6 +40,17 @@ const LANGUAGES = [
   { value: "auto", label: "Deteccion automatica" },
 ]
 
+function dedupeTerms(terms: string[]) {
+  const seen = new Set<string>()
+
+  return terms.filter((term) => {
+    const normalized = term.toLowerCase()
+    if (seen.has(normalized)) return false
+    seen.add(normalized)
+    return true
+  })
+}
+
 function buildGlossaryPrompt(terms: string[]) {
   return terms.length > 0
     ? `Terminos de ciberseguridad: ${terms.map((term) => `[${term}]`).join(" ")}`
@@ -73,7 +84,7 @@ export function Workspace() {
   const [language, setLanguage] = useState("es")
   const [chunk, setChunk] = useState("600")
   const [diarize, setDiarize] = useState(false)
-  const [terms, setTerms] = useState<string[]>(DEFAULT_GLOSSARY)
+  const [terms, setTerms] = useState<string[]>(() => dedupeTerms(DEFAULT_GLOSSARY))
 
   const [status, setStatus] = useState<RunStatus>("idle")
   const [progress, setProgress] = useState(0)
